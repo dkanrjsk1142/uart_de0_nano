@@ -4,7 +4,7 @@ ascii text based processor in de0-nano fpga board by uart interface.
 this project is based on Intel Quartus Prime 18.1 lite Edition.(free edition)  
 (contain Modelsim - Intel FPGA Starter Edition 10.5b)
 
-##directory description  
+## directory description
   constraints : Quartus constraints files.  
   modelsim    : Modelsim simulation batch files.  
   modelsim_lib: Quartus library files for modelsim.  
@@ -16,7 +16,7 @@ this project is based on Intel Quartus Prime 18.1 lite Edition.(free edition)
   .qsf        : Quartus Settings File.  
 
 
-##block diagram
+## block diagram
 *red marking is T.B.D*
 ![Block dDiagram](block_diagram/top.png)
 
