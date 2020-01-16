@@ -55,9 +55,9 @@ set_global_assignment -name NUM_PARALLEL_PROCESSORS ALL
 set_global_assignment -name STRATIX_DEVICE_IO_STANDARD "3.3-V LVTTL"
 
 # --------------------
-# -- Constraint
+# -- Constraints
 # --------------------
-set_global_assignment -name SDC_FILE constraint/UART_DE0_NANO.sdc
+set_global_assignment -name SDC_FILE constraints/UART_DE0_NANO.sdc
 
 # --------------------
 # -- Source
