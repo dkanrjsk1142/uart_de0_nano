@@ -1,0 +1,94 @@
+-- Copyright (C) 2018  Intel Corporation. All rights reserved.
+-- Your use of Intel Corporation's design tools, logic functions 
+-- and other software and tools, and its AMPP partner logic 
+-- functions, and any output files from any of the foregoing 
+-- (including device programming or simulation files), and any 
+-- associated documentation or information are expressly subject 
+-- to the terms and conditions of the Intel Program License 
+-- Subscription Agreement, the Intel Quartus Prime License Agreement,
+-- the Intel FPGA IP License Agreement, or other applicable license
+-- agreement, including, without limitation, that your use is for
+-- the sole purpose of programming logic devices manufactured by
+-- Intel and sold by Intel or its authorized distributors.  Please
+-- refer to the applicable agreement for further details.
+
+-- Quartus Prime generated Memory Initialization File (.mif)
+
+ADDRESS_RADIX=HEX;
+DATA_RADIX=HEX;
+
+WIDTH=8;
+DEPTH=64;
+
+CONTENT BEGIN
+	000 : 20;
+	-- CMD_01 ECHO
+	001 : 45;
+	002 : 43;
+	003 : 48;
+	004 : 4F;
+	005 : 20;
+	-- CMD_02 RAW_DIR
+	006 : 52;
+	007 : 41;
+	008 : 57;
+	009 : 5F;
+	00A : 44;
+	00B : 49;
+	00C : 52;
+	00D : 20;
+	-- CMD_03 RAW
+	00E : 52;
+	00F : 41;
+	010 : 57;
+	011 : 20;
+	-- CMD_04 
+	012 : 20;
+	-- CMD_05 REG_WRITE
+	013 : 52;
+	014 : 45;
+	015 : 47;
+	016 : 5F;
+	017 : 57;
+	018 : 52;
+	019 : 49;
+	01A : 54;
+	01B : 45;
+	01C : 20;
+	-- CMD_06 REG_READ
+	01D : 52;
+	01E : 45;
+	01F : 47;
+	020 : 5F;
+	021 : 52;
+	022 : 45;
+	023 : 41;
+	024 : 44;
+	025 : 20;
+	026 : 20;
+	027 : 20;
+	028 : 20;
+	029 : 20;
+	02A : 20;
+	02B : 20;
+	02C : 20;
+	02D : 20;
+	02E : 20;
+	02F : 20;
+	030 : 20;
+	031 : 20;
+	032 : 20;
+	033 : 20;
+	034 : 20;
+	035 : 20;
+	036 : 20;
+	037 : 20;
+	038 : 20;
+	039 : 20;
+	03A : 20;
+	03B : 20;
+	03C : 20;
+	03D : 20;
+	03E : 20;
+	03F : 00;
+END;
