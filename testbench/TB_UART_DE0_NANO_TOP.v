@@ -1,9 +1,6 @@
 // --------------------------------------------------------
-// File Name   : UART_DE0_NANO.v
-// Description : UART(115200) echo device - prototype
-//               next plan1 - SW event based echo device
-//               next plan2 - make parameterized RTL(freq, baud rate, parity existance, etc.)
-//               next plan3 - remove ram(remain Only IF)
+// File Name   : UART_DE0_NANO_TOP.v
+// Description : Bench TOP UART_DE0_NANO
 // --------------------------------------------------------
 // Ver     Date       Author              Comment
 // 0.01    2020.01.01 I.Yang              Create New
