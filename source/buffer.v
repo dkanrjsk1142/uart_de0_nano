@@ -49,11 +49,18 @@
 //                                            origin : flush after wait
 //                                            change : flush without wait and
 //                                                     restore dequeue address after wait
+// 0.06    (simulation test is not complete)
+// 0.0x    2020.01.17 I.Yang              add async address check(sync only -> async support)
+//                                        -> select by parameter
+//                                        -> manage by gray code
+//                                        add status(empty/full) pin
+//
 // --------------------------------------------------------
 
 `timescale 1ns / 1ps
 
 module buffer #(
+	parameter SYNC_MODE      = 8, // 1: async(clk_enqueue_i - clk_dequeue_i is different clk) / 0: sync(same clk)
 	parameter BUF_ADDR_WIDTH = 8, // BUF_SIZE = 2^BUF_ADR_WIDTH
 	parameter DATA_BIT_WIDTH = 8, // 
 	parameter WAIT_DELAY     = 0  // wait reply delay(0:no wait reply from receive module)
@@ -61,11 +68,16 @@ module buffer #(
 	input  wire                      rst_ni,
 	input  wire                      clk_enqueue_i,
 	input  wire                      clk_dequeue_i,
+	// enqueue clk domain
 	input  wire                      enqueue_den_i,
 	input  wire [DATA_BIT_WIDTH-1:0] enqueue_data_i,
+	output wire                      is_queue_full_o,
+
+	// dequeue clk domain
 	input  wire                      dequeue_wait_i,
 	output wire                      dequeue_den_o,
-	output wire [DATA_BIT_WIDTH-1:0] dequeue_data_o
+	output wire [DATA_BIT_WIDTH-1:0] dequeue_data_o,
+	output wire                      is_queue_empty_o // loosy empty status(there is some delay after queue is empty)
 );
 
 localparam BUF_SIZE = 2 ** BUF_ADDR_WIDTH;
@@ -87,11 +99,25 @@ wire [BUF_ADDR_WIDTH-1:0] s_dequeue_addr_diff;
 
 reg                       s_dequeue_wait_1d;
 
+reg                       s_full;
+reg                 [1:0] s_full_d;
+wire                      s_empty;
+
+
+// --------------------
+// function
+// --------------------
+// Binary2Graycode converter
+function [BUF_ADDR_WIDTH-1:0] bin2gray(input [BUF_ADDR_WIDTH-1:0] binary);
+	bin2gray = binary ^ (binary >> 1);
+endfunction
+// --------------------
+
 // wr address
 always @(negedge rst_ni, posedge clk_enqueue_i)
 begin
 	if(~rst_ni)
-		s_enqueue_addr <= {BUF_ADDR_WIDTH{1'b0}};
+		s_enqueue_addr <= {{BUF_ADDR_WIDTH{1'b0}}, 1'b1}; // for make graycode
 	else if(clk_enqueue_i) begin
 		if (s_enqueue_den_1d)
 			s_enqueue_addr <= s_enqueue_addr + 1'b1;
@@ -108,7 +134,7 @@ begin
 		s_enqueue_den_1d  <= 1'b0;
 		s_enqueue_data_1d <= {DATA_BIT_WIDTH{1'b0}};
 	end else if(clk_enqueue_i) begin
-		s_enqueue_den_1d  <= enqueue_den_i;
+		s_enqueue_den_1d  <= enqueue_den_i & ~s_full;
 		s_enqueue_data_1d <= enqueue_data_i;
 	end
 end
@@ -127,11 +153,122 @@ begin
 		s_dequeue_data <= RAM[s_dequeue_addr];
 end
 
+
+// --------------------
+// Async synchronizer
+// synchronize address for check empty/full status info.
+// There is synchonizing delay but not affect when queue is not empty nor full.
+// --------------------
+generate if (SYNC_MODE == 1) begin // async - graycode synchronize
+	reg  [BUF_ADDR_WIDTH-1:0] s_enqueue_addr_gray;
+	reg  [BUF_ADDR_WIDTH-1:0] s_dequeue_addr_gray;
+	reg  [BUF_ADDR_WIDTH-1:0] s_enqueue_addr_gray_1d;
+	reg  [BUF_ADDR_WIDTH-1:0] s_dequeue_addr_gray_1d;
+	reg  [BUF_ADDR_WIDTH-1:0] s_enqueue_addr_gray_2d;
+	reg  [BUF_ADDR_WIDTH-1:0] s_dequeue_addr_gray_2d;
+	reg  [BUF_ADDR_WIDTH-1:0] s_enqueue_addr_gray_3d;
+	
+	// graycode of enqueue address
+	always @(negedge rst_ni, posedge clk_enqueue_i)
+	begin
+		if(~rst_ni)
+			s_enqueue_addr_gray <= {BUF_ADDR_WIDTH{1'b0}};
+		else if(clk_enqueue_i) begin
+			if (s_enqueue_den_1d)
+				s_enqueue_addr_gray <= bin2gray(s_enqueue_addr);
+		end
+	end
+	
+	// synchronizer(enqueue->dequeue)
+	always @(negedge rst_ni, posedge clk_dequeue_i)
+	begin
+		if(~rst_ni) begin
+			s_enqueue_addr_gray_1d <= {BUF_ADDR_WIDTH{1'b0}};
+			s_enqueue_addr_gray_2d <= {BUF_ADDR_WIDTH{1'b0}};
+			s_enqueue_addr_gray_3d <= {BUF_ADDR_WIDTH{1'b0}};
+		end else if(clk_enqueue_i) begin
+			s_enqueue_addr_gray_1d <= s_enqueue_addr_gray;
+			s_enqueue_addr_gray_2d <= s_enqueue_addr_gray_1d;
+			s_enqueue_addr_gray_3d <= s_enqueue_addr_gray_2d; // delay after s_full_2d is confirmed.
+		end
+	end
+	
+	// graycode of dequeue address(use exactly dequeued data's address)
+	always @(negedge rst_ni, posedge clk_dequeue_i)
+	begin
+		if(~rst_ni)
+			s_dequeue_addr_gray <= {BUF_ADDR_WIDTH{1'b0}};
+		else if(clk_dequeue_i) begin
+			if (s_dequeue_den & ~s_dequeue_den_1d) // posedge
+				s_dequeue_addr_gray <= bin2gray(s_dequeue_addr);
+			else if (s_dequeue_addr_diff >= WAIT_DELAY[BUF_ADDR_WIDTH-1:0])
+				s_dequeue_addr_gray <= bin2gray(s_dequeue_addr - WAIT_DELAY[BUF_ADDR_WIDTH-1:0] - 1'b1);
+		end
+	end
+	
+	// synchronizer(dequeue->enqueue)
+	always @(negedge rst_ni, posedge clk_enqueue_i)
+	begin
+		if(~rst_ni) begin
+			s_dequeue_addr_gray_1d <= {BUF_ADDR_WIDTH{1'b0}};
+			s_dequeue_addr_gray_2d <= {BUF_ADDR_WIDTH{1'b0}};
+		end else if(clk_dequeue_i) begin
+			s_dequeue_addr_gray_1d <= s_dequeue_addr_gray;
+			s_dequeue_addr_gray_2d <= s_dequeue_addr_gray_1d;
+		end
+	end
+	
+	// status
+	always @(negedge rst_ni, posedge clk_enqueue_i)
+	begin
+		if(~rst_ni)
+			s_full <= 1'b0;
+		else if(clk_enqueue_i) begin
+			// if enqueue_addr + 1 == s_dequeue_addr, full. 
+			// but, gray_addr is addr + 1. so this comparison is correct.
+			if (bin2gray(s_enqueue_addr) == s_dequeue_addr_gray_2d) begin
+				if (s_enqueue_den_1d)
+					s_full <= 1'b1;
+			else
+				s_full <= 1'b0;
+			end
+		end
+	end
+	
+	// synchronizer(enqueue->dequeue)
+	always @(negedge rst_ni, posedge clk_dequeue_i)
+	begin
+		if(~rst_ni)
+			s_full_d <= 2'b0;
+		else if(clk_enqueue_i)
+			s_full_d <= {s_full_d, s_full};
+	end
+	
+	assign s_empty = (~s_full_d[1] && s_enqueue_addr_gray_3d == s_dequeue_addr_gray) ? 1'b1 : 1'b0;
+end else // sync - no synchronizer
+	// status
+	always @(negedge rst_ni, posedge clk_enqueue_i)
+	begin
+		if(~rst_ni)
+			s_full <= 1'b0;
+		else if(clk_enqueue_i) begin
+			if (s_enqueue_addr + 1'b1 == s_dequeue_addr) begin
+				if (s_enqueue_den_1d)
+					s_full <= 1'b1;
+			else
+				s_full <= 1'b0;
+			end
+		end
+	end
+	
+	assign s_empty = (~s_full && s_enqueue_addr == s_dequeue_addr) ? 1'b1 : 1'b0;
+endgenerate
+
 // --------------------
 // TX
 // --------------------
 // mod Ver0.05 start
-assign s_dequeue_den = ~dequeue_wait_i && s_enqueue_addr != s_dequeue_addr ? 1'b1 : 1'b0;
+assign s_dequeue_den = ~dequeue_wait_i && ~s_empty ? 1'b1 : 1'b0;
 
 always @(negedge rst_ni, posedge clk_dequeue_i)
 begin
@@ -147,7 +284,7 @@ end
 always @(negedge rst_ni, posedge clk_dequeue_i)
 begin
 	if(~rst_ni)
-		s_dequeue_addr_before_wait <= {BUF_ADDR_WIDTH{1'b0}};
+		s_dequeue_addr_before_wait <= {{BUF_ADDR_WIDTH{1'b0}}, 1'b1}; // for make graycode
 	else if(clk_dequeue_i) begin
 		if (s_dequeue_den & ~s_dequeue_den_1d) // posedge
 			s_dequeue_addr_before_wait <= s_dequeue_addr + 1'b1;
@@ -162,18 +299,20 @@ assign s_dequeue_addr_diff = s_dequeue_addr - s_dequeue_addr_before_wait;
 always @(negedge rst_ni, posedge clk_dequeue_i)
 begin
 	if(~rst_ni)
-		s_dequeue_addr <= {BUF_ADDR_WIDTH{1'b0}};
+		s_dequeue_addr <= {{BUF_ADDR_WIDTH{1'b0}}, 1'b1};
 	else if(clk_dequeue_i) begin
 		if (s_dequeue_den)
 			s_dequeue_addr <= s_dequeue_addr + 1'b1;
-		else if (dequeue_wait_i & ~s_dequeue_wait_1d) begin // posedge
+		else if (dequeue_wait_i & ~s_dequeue_wait_1d) // posedge
 			s_dequeue_addr <= s_dequeue_addr_before_wait;
-		end
 	end
 end
 // mod Ver0.05 end
 
 assign dequeue_data_o = s_dequeue_data;
 assign dequeue_den_o  = s_dequeue_den_1d;
+
+assign is_queue_full_o  = s_full;
+assign is_queue_empty_o = s_empty;
 
 endmodule
