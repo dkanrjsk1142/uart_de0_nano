@@ -14,6 +14,7 @@
 // 0.05    2020.01.03 I.Yang              make module "buffer" to be instance
 // 0.06    2020.01.19 I.Yang              add uart rts/cts pin
 //                                        remove uart_tx_buffer(uart_if contain buffer)
+// 0.07    2020.01.19 I.Yang              set Hi to uart cts pin(not use flow control)
 // --------------------------------------------------------
 
 module UART_DE0_NANO #(
@@ -40,6 +41,9 @@ wire [ 7:0] s_rx_data;
 reg         s_tx_en;
 reg  [ 7:0] s_tx_data;
 wire        s_tx_busy;
+
+wire        s_ign_uart_rts = 1'b1; // 1:ignore rts / 0:use rts
+wire        s_uart_rts;
 
 //cmd_parser
 wire [ 4:0] s_cmd;
@@ -72,7 +76,7 @@ uart_if #(
 	.uart_cts_o           (uart_cts    ), // output wire       uart_cts_o,
 
 	.uart_tx_o            (uart_tx     ), // output reg        uart_tx_o,
-	.uart_rts_i           (uart_rts    ), // input  wire       uart_rts_i,
+	.uart_rts_i           (s_uart_rts  ), // input  wire       uart_rts_i,
 
 	.rx_irq_o             (s_rx_en     ), // output wire       rx_irq_o,   // rx_irq(1clk pulse)
 	.rx_data_o            (s_rx_data   ), // output wire [7:0] rx_data_o,  // 
@@ -82,6 +86,8 @@ uart_if #(
 	.tx_data_i            (s_tx_data   ), // input  wire [7:0] tx_data_i,  // 
 	.tx_busy_o            (s_tx_busy   )  // output wire       tx_busy_o   // 1:ignore tx_irq
 );
+
+assign s_uart_rts = s_ign_uart_rts | uart_rts;
 
 cmd_parser #(
 	.CMD_IGNORE_CASE      (1           ), // parameter CMD_IGNORE_CASE      =  1, // 1: ignore-case, 0:restrict check case
