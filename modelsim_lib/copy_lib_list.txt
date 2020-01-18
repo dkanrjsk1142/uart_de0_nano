@@ -1,3 +1,0 @@
-%QUARTUS_INSTALLED_PATH%/eda/sim_lib/*
-
-altera_mf.v
