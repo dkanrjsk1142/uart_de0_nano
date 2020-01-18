@@ -4,6 +4,7 @@
 // --------------------------------------------------------
 // Ver     Date       Author              Comment
 // 0.01    2020.01.01 I.Yang              Create New
+// 0.02    2020.01.19 I.Yang              add uart cts/rts
 // --------------------------------------------------------
 
 
@@ -28,7 +29,6 @@ initial begin
 end
 
 tb_clk #(50000000, 50) u_tb_clk_50m  (s_clk_en, s_clk_50m , s_rsth);
-//tb_clk #(  500000, 50) u_tb_clk_115k (    1'b1, s_clk_115k,       );
 tb_clk #(  115200, 50) u_tb_clk_115k (    1'b1, s_clk_115k,       );
 //tb_clk #(    9600, 50) u_tb_clk_115k (    1'b1, s_clk_115k,       );
 
@@ -43,12 +43,20 @@ tb_clk #(  115200, 50) u_tb_clk_115k (    1'b1, s_clk_115k,       );
 // --------------------
 tri1 s_uart_rx;
 tri1 s_uart_tx;
+tri1 s_uart_cts;
+tri1 s_uart_rts;
 
 UART_DE0_NANO U_UART_DE0_NANO(
 	.rst_n     (~s_rsth             ), //input  wire rst_n,
 	.clk       (s_clk_50m           ), //input  wire clk,
+
+	// uart if
 	.uart_rx   (s_uart_rx           ), //input  wire uart_rx,
 	.uart_tx   (s_uart_tx           ), //output wire uart_tx
+	.uart_cts  (s_uart_cts          ), //output wire uart_cts
+	.uart_rts  (s_uart_rts          ), //input  wire uart_rts
+
+	// debug
 	.led_debug (                    ), //output wire [7:0] led_debug
 	.test_pin  (                    )  //output wire test_pin
 );

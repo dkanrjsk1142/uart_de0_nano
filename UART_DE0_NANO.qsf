@@ -45,6 +45,8 @@ set_location_assignment PIN_R8 -to clk
 set_location_assignment PIN_E1 -to rst_n
 set_location_assignment PIN_A8 -to uart_rx
 set_location_assignment PIN_D3 -to uart_tx
+set_location_assignment PIN_B8 -to uart_cts
+set_location_assignment PIN_C3 -to uart_rts
 set_location_assignment PIN_L3 -to led_debug[7]
 set_location_assignment PIN_B1 -to led_debug[6]
 set_location_assignment PIN_F3 -to led_debug[5]
@@ -60,6 +62,15 @@ set_location_assignment PIN_A6 -to test_pin
 # --------------------
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to uart_rx
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to uart_tx
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to uart_cts
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to uart_rts
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to test_pin
+
+# --------------------
+# -- Weak pull-up registor
+# --------------------
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to uart_rx
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to uart_rts
+
 
 

@@ -12,7 +12,8 @@
 // 0.04    2020.01.03 I.Yang              remove RAM read-FF reset condition
 //                                        => improve timing issue
 // 0.05    2020.01.03 I.Yang              make module "buffer" to be instance
-// 0.06    2020.01.14 I.Yang              
+// 0.06    2020.01.19 I.Yang              add uart rts/cts pin
+//                                        remove uart_tx_buffer(uart_if contain buffer)
 // --------------------------------------------------------
 
 module UART_DE0_NANO #(
@@ -21,8 +22,14 @@ module UART_DE0_NANO #(
 
 	input  wire       rst_n,
 	input  wire       clk,
+
+	// uart if
 	input  wire       uart_rx,
 	output wire       uart_tx,
+    output wire       uart_cts,
+    input  wire       uart_rts,
+
+	// debug
 	output wire [7:0] led_debug,
 	output wire       test_pin
 );
@@ -30,8 +37,8 @@ module UART_DE0_NANO #(
 //uart_if
 wire        s_rx_en;
 wire [ 7:0] s_rx_data;
-wire        s_tx_en;
-wire [ 7:0] s_tx_data;
+reg         s_tx_en;
+reg  [ 7:0] s_tx_data;
 wire        s_tx_busy;
 
 //cmd_parser
@@ -62,10 +69,15 @@ uart_if #(
 	.clk_i                (clk         ), // input  wire       clk,
 
 	.uart_rx_i            (uart_rx     ), // input  wire       uart_rx_i,
-	.uart_tx_o            (uart_tx     ), // output reg        uart_tx_o,
+	.uart_cts_o           (uart_cts    ), // output wire       uart_cts_o,
 
-	.rx_irq_o             (s_rx_en     ), // output reg        rx_irq_o,   // rx_irq(1clk pulse)
-	.rx_data_o            (s_rx_data   ), // output reg  [7:0] rx_data_o,  // 
+	.uart_tx_o            (uart_tx     ), // output reg        uart_tx_o,
+	.uart_rts_i           (uart_rts    ), // input  wire       uart_rts_i,
+
+	.rx_irq_o             (s_rx_en     ), // output wire       rx_irq_o,   // rx_irq(1clk pulse)
+	.rx_data_o            (s_rx_data   ), // output wire [7:0] rx_data_o,  // 
+	.rx_wait_i            (1'b0        ), // input  wire [7:0] rx_data_o,  // ************************will connect cmd_parser
+
 	.tx_irq_i             (s_tx_en     ), // input  wire       tx_irq_i,   // tx_irq(1clk pulse)
 	.tx_data_i            (s_tx_data   ), // input  wire [7:0] tx_data_i,  // 
 	.tx_busy_o            (s_tx_busy   )  // output wire       tx_busy_o   // 1:ignore tx_irq
@@ -97,32 +109,16 @@ always @(*) begin
 	case(s_cmd)
 		CMD_ECHO:
 			begin
-				s_tx_buf_en   <= s_buf_en;
-				s_tx_buf_data <= s_buf_data;
+				s_tx_en   <= s_buf_en;
+				s_tx_data <= s_buf_data;
 			end
 		default:
 			begin
-				s_tx_buf_en   <= 1'b0;
-				s_tx_buf_data <= 8'b0;
+				s_tx_en   <= 1'b0;
+				s_tx_data <= 8'b0;
 			end
 	endcase
 end
-
-buffer #(
-	.BUF_ADDR_WIDTH       (8              ), // parameter BUF_ADDR_WIDTH = 8, // BUF_SIZE = 2^BUF_ADR_WIDTH
-	.DATA_BIT_WIDTH       (8              ), // parameter DATA_BIT_WIDTH = 8, // 
-	.WAIT_DELAY           (2              )  // parameter WAIT_DELAY     = 0  // wait reply delay(0:no wait reply from receive module)
-) u_buffer_uart_tx_fifo (
-	.rst_ni               (rst_n          ), // input  wire                      rst_ni,
-	.clk_enqueue_i        (clk            ), // input  wire                      clk_enqueue_i,
-	.clk_dequeue_i        (clk            ), // input  wire                      clk_dequeue_i,
-	.enqueue_den_i        (s_tx_buf_en    ), // input  wire                      enqueue_den_i,
-	.enqueue_data_i       (s_tx_buf_data  ), // input  wire [DATA_BIT_WIDTH-1:0] enqueue_data_i,
-	.dequeue_wait_i       (s_tx_busy      ), // input  wire                      dequeue_wait_i,
-	.dequeue_den_o        (s_tx_en        ), // output wire                      dequeue_den_o,
-	.dequeue_data_o       (s_tx_data      )  // output wire [DATA_BIT_WIDTH-1:0] dequeue_data_o
-);
-
 
 // Debug
 //assign led_debug = s_rx_data;
