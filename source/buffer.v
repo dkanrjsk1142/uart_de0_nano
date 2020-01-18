@@ -49,8 +49,7 @@
 //                                            origin : flush after wait
 //                                            change : flush without wait and
 //                                                     restore dequeue address after wait
-// 0.06    (simulation test is not complete)
-// 0.0x    2020.01.17 I.Yang              add async address check(sync only -> async support)
+// 0.06    2020.01.19 I.Yang              add async address check(sync only -> async support)
 //                                        -> select by parameter
 //                                        -> manage by gray code
 //                                        add status(empty/full) pin
@@ -60,10 +59,10 @@
 `timescale 1ns / 1ps
 
 module buffer #(
-	parameter SYNC_MODE      = 8, // 1: async(clk_enqueue_i - clk_dequeue_i is different clk) / 0: sync(same clk)
-	parameter BUF_ADDR_WIDTH = 8, // BUF_SIZE = 2^BUF_ADR_WIDTH
-	parameter DATA_BIT_WIDTH = 8, // 
-	parameter WAIT_DELAY     = 0  // wait reply delay(0:no wait reply from receive module)
+	parameter SYNC_MODE      =  "sync", // "async" : (clk_enqueue_i - clk_dequeue_i is different clk) / "sync" : (same clk)
+	parameter BUF_ADDR_WIDTH =       8, // BUF_SIZE = 2^BUF_ADR_WIDTH
+	parameter DATA_BIT_WIDTH =       8, // 
+	parameter WAIT_DELAY     =       0  // wait reply delay(0:no wait reply from receive module)
 ) (
 	input  wire                      rst_ni,
 	input  wire                      clk_enqueue_i,
@@ -100,6 +99,7 @@ wire [BUF_ADDR_WIDTH-1:0] s_dequeue_addr_diff;
 reg                       s_dequeue_wait_1d;
 
 reg                       s_full;
+reg                       s_full_out;
 reg                 [1:0] s_full_d;
 wire                      s_empty;
 
@@ -159,7 +159,8 @@ end
 // synchronize address for check empty/full status info.
 // There is synchonizing delay but not affect when queue is not empty nor full.
 // --------------------
-generate if (SYNC_MODE == 1) begin // async - graycode synchronize
+generate if (SYNC_MODE == "async") // async - graycode synchronize
+begin
 	reg  [BUF_ADDR_WIDTH-1:0] s_enqueue_addr_gray;
 	reg  [BUF_ADDR_WIDTH-1:0] s_dequeue_addr_gray;
 	reg  [BUF_ADDR_WIDTH-1:0] s_enqueue_addr_gray_1d;
@@ -199,10 +200,10 @@ generate if (SYNC_MODE == 1) begin // async - graycode synchronize
 		if(~rst_ni)
 			s_dequeue_addr_gray <= {BUF_ADDR_WIDTH{1'b0}};
 		else if(clk_dequeue_i) begin
-			if (s_dequeue_den & ~s_dequeue_den_1d) // posedge
+			if (s_dequeue_den)
 				s_dequeue_addr_gray <= bin2gray(s_dequeue_addr);
-			else if (s_dequeue_addr_diff >= WAIT_DELAY[BUF_ADDR_WIDTH-1:0])
-				s_dequeue_addr_gray <= bin2gray(s_dequeue_addr - WAIT_DELAY[BUF_ADDR_WIDTH-1:0] - 1'b1);
+			else if (dequeue_wait_i & ~s_dequeue_wait_1d) // posedge
+				s_dequeue_addr_gray <= bin2gray(s_dequeue_addr_before_wait - 1'b1);
 		end
 	end
 	
@@ -224,19 +225,46 @@ generate if (SYNC_MODE == 1) begin // async - graycode synchronize
 		if(~rst_ni)
 			s_full <= 1'b0;
 		else if(clk_enqueue_i) begin
-			// if enqueue_addr + 1 == s_dequeue_addr, full. 
+			// if enqueue_addr + 2 == s_dequeue_addr, full. 
 			// but, gray_addr is addr + 1. so this comparison is correct.
-			if (bin2gray(s_enqueue_addr) == s_dequeue_addr_gray_2d) begin
+			if (~s_empty && bin2gray(s_enqueue_addr + 1'b1) == s_dequeue_addr_gray_2d) begin
 				if (s_enqueue_den_1d)
 					s_full <= 1'b1;
-			else
-				s_full <= 1'b0;
+				else
+					s_full <= 1'b0;
 			end
 		end
 	end
-	
+
 	// synchronizer(enqueue->dequeue)
 	always @(negedge rst_ni, posedge clk_dequeue_i)
+	begin
+		if(~rst_ni)
+			s_full_d <= 2'b0;
+		else if(clk_dequeue_i)
+			s_full_d <= {s_full_d, s_full};
+	end
+	
+	assign s_empty = (~s_full_d[1] && s_enqueue_addr_gray_3d == s_dequeue_addr_gray) ? 1'b1 : 1'b0;
+end
+else // sync - no synchronizer
+begin
+	// status
+	always @(negedge rst_ni, posedge clk_enqueue_i)
+	begin
+		if(~rst_ni)
+			s_full <= 1'b0;
+		else if(clk_enqueue_i) begin
+			if (~s_empty && ((s_enqueue_addr + 2'h2) == s_dequeue_addr)) begin
+				if (s_enqueue_den_1d)
+					s_full <= 1'b1;
+				else
+					s_full <= 1'b0;
+			end
+		end
+	end
+
+	always @(negedge rst_ni, posedge clk_enqueue_i)
 	begin
 		if(~rst_ni)
 			s_full_d <= 2'b0;
@@ -244,24 +272,8 @@ generate if (SYNC_MODE == 1) begin // async - graycode synchronize
 			s_full_d <= {s_full_d, s_full};
 	end
 	
-	assign s_empty = (~s_full_d[1] && s_enqueue_addr_gray_3d == s_dequeue_addr_gray) ? 1'b1 : 1'b0;
-end else // sync - no synchronizer
-	// status
-	always @(negedge rst_ni, posedge clk_enqueue_i)
-	begin
-		if(~rst_ni)
-			s_full <= 1'b0;
-		else if(clk_enqueue_i) begin
-			if (s_enqueue_addr + 1'b1 == s_dequeue_addr) begin
-				if (s_enqueue_den_1d)
-					s_full <= 1'b1;
-			else
-				s_full <= 1'b0;
-			end
-		end
-	end
-	
-	assign s_empty = (~s_full && s_enqueue_addr == s_dequeue_addr) ? 1'b1 : 1'b0;
+	assign s_empty = (~s_full_d[0] && s_enqueue_addr == s_dequeue_addr) ? 1'b1 : 1'b0;
+end
 endgenerate
 
 // --------------------
@@ -312,7 +324,15 @@ end
 assign dequeue_data_o = s_dequeue_data;
 assign dequeue_den_o  = s_dequeue_den_1d;
 
-assign is_queue_full_o  = s_full;
+// 1clk "enqueue_clk" delay out signal for enqueuing device
+always @(negedge rst_ni, posedge clk_enqueue_i)
+begin
+	if(~rst_ni)
+		s_full_out <= 1'b0;
+	else if(clk_enqueue_i)
+		s_full_out <= s_full;
+end
+assign is_queue_full_o  = s_full_out;
 assign is_queue_empty_o = s_empty;
 
 endmodule
