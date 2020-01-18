@@ -44,7 +44,14 @@ vlog ../testbench/CMD_TABLE_FOR_SIM.v                >> comp_rtl.log
 # MODE = -c | -gui
 MODE="-gui"
 
-vsim TB_UART_DE0_NANO_TOP -t ps -L altera_mf -do sim.ctl $MODE -GSIM_MODE=1
+# test pattern
+if [ -z $1 ] ; then
+	ctl="0_sim.ctl"
+else
+	ctl=$1"_sim.ctl"
+fi
+
+vsim TB_UART_DE0_NANO_TOP -t ps -L altera_mf -do $ctl $MODE -GSIM_MODE=1
 
 
 # --------------------------

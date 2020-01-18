@@ -1,6 +1,6 @@
 log -r /*
 radix -hex
-do force.do
-do wave.do
+do 0_force.do
+do 0_wave.do
 run 3500us
 exit
