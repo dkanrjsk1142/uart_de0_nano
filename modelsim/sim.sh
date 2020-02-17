@@ -30,7 +30,11 @@ cp ../source/*.mif .
 vlog ../source/uart_if.v                             >> comp_rtl.log
 vlog ../source/buffer.v                              >> comp_rtl.log
 vlog ../source/cmd_parser.v                          >> comp_rtl.log
+vlog ../source/hex2ascii.v                           >> comp_rtl.log
 vlog ../source/UART_DE0_NANO.v                       >> comp_rtl.log
+
+vlog ../source/RTL_TEST/ps2_rx_if.v                  >> comp_rtl.log
+vlog ../source/RTL_TEST/trg_cntr.v                   >> comp_rtl.log
 
 # --bench
 vlog ../testbench/TB_UART_DE0_NANO_TOP.v             >> comp_rtl.log
