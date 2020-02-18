@@ -1,25 +1,4 @@
 // --------------------------------------------------------
-// File Name   : UART_DE0_NANO.v
-// Description : UART(115200) echo device - prototype
-//               next plan1 - SW event based echo device
-//               next plan2 - make parameterized RTL(freq, baud rate, parity existance, etc.)
-//               next plan3 - remove ram(remain Only IF)
-// --------------------------------------------------------
-// Ver     Date       Author              Comment
-// 0.01    2020.01.01 I.Yang              Create New
-// 0.02    2020.01.01 I.Yang              complete prototype test
-// 0.03    2020.01.02 I.Yang              make UART_IF to be instance - plan3 complete
-// 0.04    2020.01.03 I.Yang              remove RAM read-FF reset condition
-//                                        => improve timing issue
-// --------------------------------------------------------
-// --------------------------------------------------------
-// File Name   : UART_ECHO_TOP.v
-// Description : UART echo device
-// --------------------------------------------------------
-// Ver     Date       Author              Comment
-// 0.01    2020.01.03 I.Yang              reduce function
-// --------------------------------------------------------
-// --------------------------------------------------------
 // File Name   : buffer.v
 // Description : buffer controlled by dequeue_wait
 //               BUSY_DELAY=2 example
@@ -53,7 +32,9 @@
 //                                        -> select by parameter
 //                                        -> manage by gray code
 //                                        add status(empty/full) pin
-//
+// 0.07    2020.02.01 I.Yang              support negative value WAIT_DELAY
+// 0.08    2020.02.05 I.Yang              add clk_en
+//                                        fix clk_domain mismatch
 // --------------------------------------------------------
 
 `timescale 1ns / 1ps
@@ -66,7 +47,9 @@ module buffer #(
 ) (
 	input  wire                      rst_ni,
 	input  wire                      clk_enqueue_i,
+	input  wire                      clken_enqueue_i,
 	input  wire                      clk_dequeue_i,
+	input  wire                      clken_dequeue_i,
 	// enqueue clk domain
 	input  wire                      enqueue_den_i,
 	input  wire [DATA_BIT_WIDTH-1:0] enqueue_data_i,
@@ -94,7 +77,7 @@ reg  [BUF_ADDR_WIDTH-1:0] s_enqueue_addr;
 reg  [BUF_ADDR_WIDTH-1:0] s_dequeue_addr;
 
 reg  [BUF_ADDR_WIDTH-1:0] s_dequeue_addr_before_wait;
-wire [BUF_ADDR_WIDTH-1:0] s_dequeue_addr_diff;
+wire signed [BUF_ADDR_WIDTH  :0] s_dequeue_addr_diff; // signed arith with WAIT_DELAY
 
 reg                       s_dequeue_wait_1d;
 
@@ -119,8 +102,10 @@ begin
 	if(~rst_ni)
 		s_enqueue_addr <= {{BUF_ADDR_WIDTH{1'b0}}, 1'b1}; // for make graycode
 	else if(clk_enqueue_i) begin
-		if (s_enqueue_den_1d)
-			s_enqueue_addr <= s_enqueue_addr + 1'b1;
+		if(clken_enqueue_i) begin
+			if (s_enqueue_den_1d)
+				s_enqueue_addr <= s_enqueue_addr + 1'b1;
+		end
 	end
 end
 
@@ -134,23 +119,29 @@ begin
 		s_enqueue_den_1d  <= 1'b0;
 		s_enqueue_data_1d <= {DATA_BIT_WIDTH{1'b0}};
 	end else if(clk_enqueue_i) begin
-		s_enqueue_den_1d  <= enqueue_den_i & ~s_full;
-		s_enqueue_data_1d <= enqueue_data_i;
+		if(clken_enqueue_i) begin
+			s_enqueue_den_1d  <= enqueue_den_i & ~s_full;
+			s_enqueue_data_1d <= enqueue_data_i;
+		end
 	end
 end
 
 // write
 always @(posedge clk_enqueue_i)
 begin
-	if (s_enqueue_den_1d)
-		RAM[s_enqueue_addr] <= s_enqueue_data_1d;
+	if(clken_enqueue_i) begin
+		if (s_enqueue_den_1d)
+			RAM[s_enqueue_addr] <= s_enqueue_data_1d;
+	end
 end
 
 // read(1clk-dly)
 always @(posedge clk_dequeue_i)
 begin
+	if(clken_dequeue_i) begin
 //	if (s_dequeue_den) // del Ver0.05
 		s_dequeue_data <= RAM[s_dequeue_addr];
+	end
 end
 
 
@@ -175,8 +166,10 @@ begin
 		if(~rst_ni)
 			s_enqueue_addr_gray <= {BUF_ADDR_WIDTH{1'b0}};
 		else if(clk_enqueue_i) begin
-			if (s_enqueue_den_1d)
-				s_enqueue_addr_gray <= bin2gray(s_enqueue_addr);
+			if(clken_enqueue_i) begin
+				if (s_enqueue_den_1d)
+					s_enqueue_addr_gray <= bin2gray(s_enqueue_addr);
+			end
 		end
 	end
 	
@@ -187,10 +180,12 @@ begin
 			s_enqueue_addr_gray_1d <= {BUF_ADDR_WIDTH{1'b0}};
 			s_enqueue_addr_gray_2d <= {BUF_ADDR_WIDTH{1'b0}};
 			s_enqueue_addr_gray_3d <= {BUF_ADDR_WIDTH{1'b0}};
-		end else if(clk_enqueue_i) begin
-			s_enqueue_addr_gray_1d <= s_enqueue_addr_gray;
-			s_enqueue_addr_gray_2d <= s_enqueue_addr_gray_1d;
-			s_enqueue_addr_gray_3d <= s_enqueue_addr_gray_2d; // delay after s_full_2d is confirmed.
+		end else if(clk_dequeue_i) begin
+			if(clken_dequeue_i) begin
+				s_enqueue_addr_gray_1d <= s_enqueue_addr_gray;
+				s_enqueue_addr_gray_2d <= s_enqueue_addr_gray_1d;
+				s_enqueue_addr_gray_3d <= s_enqueue_addr_gray_2d; // delay after s_full_2d is confirmed.
+			end
 		end
 	end
 	
@@ -200,10 +195,12 @@ begin
 		if(~rst_ni)
 			s_dequeue_addr_gray <= {BUF_ADDR_WIDTH{1'b0}};
 		else if(clk_dequeue_i) begin
-			if (s_dequeue_den)
-				s_dequeue_addr_gray <= bin2gray(s_dequeue_addr);
-			else if (dequeue_wait_i & ~s_dequeue_wait_1d) // posedge
-				s_dequeue_addr_gray <= bin2gray(s_dequeue_addr_before_wait - 1'b1);
+			if(clken_dequeue_i) begin
+				if (s_dequeue_den)
+					s_dequeue_addr_gray <= bin2gray(s_dequeue_addr);
+				else if (dequeue_wait_i & ~s_dequeue_wait_1d) // posedge
+					s_dequeue_addr_gray <= bin2gray(s_dequeue_addr_before_wait - 1'b1);
+			end
 		end
 	end
 	
@@ -213,9 +210,11 @@ begin
 		if(~rst_ni) begin
 			s_dequeue_addr_gray_1d <= {BUF_ADDR_WIDTH{1'b0}};
 			s_dequeue_addr_gray_2d <= {BUF_ADDR_WIDTH{1'b0}};
-		end else if(clk_dequeue_i) begin
-			s_dequeue_addr_gray_1d <= s_dequeue_addr_gray;
-			s_dequeue_addr_gray_2d <= s_dequeue_addr_gray_1d;
+		end else if(clk_enqueue_i) begin
+			if(clken_enqueue_i) begin
+				s_dequeue_addr_gray_1d <= s_dequeue_addr_gray;
+				s_dequeue_addr_gray_2d <= s_dequeue_addr_gray_1d;
+			end
 		end
 	end
 	
@@ -225,13 +224,15 @@ begin
 		if(~rst_ni)
 			s_full <= 1'b0;
 		else if(clk_enqueue_i) begin
-			// if enqueue_addr + 2 == s_dequeue_addr, full. 
-			// but, gray_addr is addr + 1. so this comparison is correct.
-			if (~s_empty && bin2gray(s_enqueue_addr + 1'b1) == s_dequeue_addr_gray_2d) begin
-				if (s_enqueue_den_1d)
-					s_full <= 1'b1;
-				else
-					s_full <= 1'b0;
+			if(clken_enqueue_i) begin
+				// if enqueue_addr + 2 == s_dequeue_addr, full. 
+				// but, gray_addr is addr + 1. so this comparison is correct.
+				if (~s_empty && bin2gray(s_enqueue_addr + 1'b1) == s_dequeue_addr_gray_2d) begin
+					if (s_enqueue_den_1d)
+						s_full <= 1'b1;
+					else
+						s_full <= 1'b0;
+				end
 			end
 		end
 	end
@@ -242,7 +243,9 @@ begin
 		if(~rst_ni)
 			s_full_d <= 2'b0;
 		else if(clk_dequeue_i)
-			s_full_d <= {s_full_d, s_full};
+			if(clken_dequeue_i) begin
+				s_full_d <= {s_full_d, s_full};
+			end
 	end
 	
 	assign s_empty = (~s_full_d[1] && s_enqueue_addr_gray_3d == s_dequeue_addr_gray) ? 1'b1 : 1'b0;
@@ -255,11 +258,13 @@ begin
 		if(~rst_ni)
 			s_full <= 1'b0;
 		else if(clk_enqueue_i) begin
-			if (~s_empty && ((s_enqueue_addr + 2'h2) == s_dequeue_addr)) begin
-				if (s_enqueue_den_1d)
-					s_full <= 1'b1;
-				else
-					s_full <= 1'b0;
+			if(clken_enqueue_i) begin
+				if (~s_empty && ((s_enqueue_addr + 2'h2) == s_dequeue_addr)) begin
+					if (s_enqueue_den_1d)
+						s_full <= 1'b1;
+					else
+						s_full <= 1'b0;
+				end
 			end
 		end
 	end
@@ -269,7 +274,9 @@ begin
 		if(~rst_ni)
 			s_full_d <= 2'b0;
 		else if(clk_enqueue_i)
-			s_full_d <= {s_full_d, s_full};
+			if(clken_enqueue_i) begin
+				s_full_d <= {s_full_d, s_full};
+			end
 	end
 	
 	assign s_empty = (~s_full_d[0] && s_enqueue_addr == s_dequeue_addr) ? 1'b1 : 1'b0;
@@ -288,8 +295,10 @@ begin
 		s_dequeue_wait_1d <= 1'b0;
 		s_dequeue_den_1d  <= 1'b0;
 	end else if(clk_dequeue_i) begin
-		s_dequeue_wait_1d <= dequeue_wait_i;
-		s_dequeue_den_1d  <= s_dequeue_den;
+		if(clken_dequeue_i) begin
+			s_dequeue_wait_1d <= dequeue_wait_i;
+			s_dequeue_den_1d  <= s_dequeue_den;
+		end
 	end
 end
 
@@ -298,10 +307,12 @@ begin
 	if(~rst_ni)
 		s_dequeue_addr_before_wait <= {{BUF_ADDR_WIDTH{1'b0}}, 1'b1}; // for make graycode
 	else if(clk_dequeue_i) begin
-		if (s_dequeue_den & ~s_dequeue_den_1d) // posedge
-			s_dequeue_addr_before_wait <= s_dequeue_addr + 1'b1;
-		else if (s_dequeue_addr_diff >= WAIT_DELAY[BUF_ADDR_WIDTH-1:0])
-			s_dequeue_addr_before_wait <= s_dequeue_addr - WAIT_DELAY[BUF_ADDR_WIDTH-1:0];
+		if(clken_dequeue_i) begin
+			if (s_dequeue_den & ~s_dequeue_den_1d) // posedge
+				s_dequeue_addr_before_wait <= s_dequeue_addr + 1'b1;
+			else if ($signed(s_dequeue_addr_diff) >= $signed(WAIT_DELAY[BUF_ADDR_WIDTH:0]))
+				s_dequeue_addr_before_wait <= s_dequeue_addr - WAIT_DELAY[BUF_ADDR_WIDTH-1:0];
+		end
 	end
 end
 
@@ -313,10 +324,12 @@ begin
 	if(~rst_ni)
 		s_dequeue_addr <= {{BUF_ADDR_WIDTH{1'b0}}, 1'b1};
 	else if(clk_dequeue_i) begin
-		if (s_dequeue_den)
-			s_dequeue_addr <= s_dequeue_addr + 1'b1;
-		else if (dequeue_wait_i & ~s_dequeue_wait_1d) // posedge
-			s_dequeue_addr <= s_dequeue_addr_before_wait;
+		if(clken_dequeue_i) begin
+			if (s_dequeue_den)
+				s_dequeue_addr <= s_dequeue_addr + 1'b1;
+			else if (dequeue_wait_i & ~s_dequeue_wait_1d) // posedge
+				s_dequeue_addr <= s_dequeue_addr_before_wait;
+		end
 	end
 end
 // mod Ver0.05 end
@@ -330,7 +343,9 @@ begin
 	if(~rst_ni)
 		s_full_out <= 1'b0;
 	else if(clk_enqueue_i)
-		s_full_out <= s_full;
+		if(clken_enqueue_i) begin
+			s_full_out <= s_full;
+		end
 end
 assign is_queue_full_o  = s_full_out;
 assign is_queue_empty_o = s_empty;

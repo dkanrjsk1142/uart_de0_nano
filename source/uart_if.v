@@ -13,6 +13,7 @@
 //                                        add tx/rx buffer
 //                                        add parameter for tx/rx buffer
 //                                        add rx_wait_i pin(for rx buffer)
+// 0.08    2020.02.17 I.Yang              add clken for buffer
 // --------------------------------------------------------
 
 `timescale 1ns / 1ps
@@ -176,7 +177,9 @@ buffer #(
 ) u_rx_buffer (
 	.rst_ni               (rst_ni              ), // input  wire                      rst_ni,
 	.clk_enqueue_i        (clk_i               ), // input  wire                      clk_enqueue_i,
+	.clken_enqueue_i      (1'b1                ), // input  wire                      clken_enqueue_i,
 	.clk_dequeue_i        (clk_i               ), // input  wire                      clk_dequeue_i,
+	.clken_dequeue_i      (1'b1                ), // input  wire                      clken_dequeue_i,
 	.enqueue_den_i        (s_rx_irq            ), // input  wire                      enqueue_den_i,
 	.enqueue_data_i       (s_rx_data_1d        ), // input  wire [DATA_BIT_WIDTH-1:0] enqueue_data_i,
 	.is_queue_full_o      (s_rx_buf_full       ), // output wire                      is_queue_full_o,
@@ -206,7 +209,9 @@ buffer #(
 ) u_tx_buffer (
 	.rst_ni               (rst_ni              ), // input  wire                      rst_ni,
 	.clk_enqueue_i        (clk_i               ), // input  wire                      clk_enqueue_i,
+	.clken_enqueue_i      (1'b1                ), // input  wire                      clken_enqueue_i,
 	.clk_dequeue_i        (clk_i               ), // input  wire                      clk_dequeue_i,
+	.clken_dequeue_i      (1'b1                ), // input  wire                      clken_dequeue_i,
 	.enqueue_den_i        (tx_irq_i            ), // input  wire                      enqueue_den_i,
 	.enqueue_data_i       (tx_data_i           ), // input  wire [DATA_BIT_WIDTH-1:0] enqueue_data_i,
 	.is_queue_full_o      (tx_busy_o           ), // output wire                      is_queue_full_o,
