@@ -30,6 +30,13 @@ module UART_DE0_NANO #(
     output wire       uart_cts,
     input  wire       uart_rts,
 
+
+	// test RTL
+	input  wire       host1_uart_rx,
+	output wire       host1_uart_tx,
+	input  wire       host2_ps2_clk,
+	input  wire       host2_ps2_data,
+
 	// debug
 	output wire [7:0] led_debug,
 	output wire       test_pin
@@ -61,6 +68,16 @@ wire [ 7:0] s_buf_data;
 reg         s_tx_buf_en;
 reg  [ 7:0] s_tx_buf_data;
 
+
+wire        s_host1_rx_en;
+wire [ 7:0] s_host1_rx_data;
+reg         s_host1_tx_en;
+reg  [ 7:0] s_host1_tx_data;
+
+wire        s_host2_rx_en;
+wire [ 7:0] s_host2_rx_data;
+wire        s_host2_rx_ascii_en;
+wire [ 7:0] s_host2_rx_ascii_data;
 
 uart_if #(
 	.SYS_CLK_FREQ         (50000000    ), // parameter SYS_CLK_FREQ = 50000000, // default = 115200baud @ 50MHz
@@ -110,6 +127,8 @@ cmd_parser #(
 	.cmd_done             (32'b0       )  // input  wire [31:0] cmd_valid_o
 );
 
+wire s_insert_enter;
+reg [2:0] s_insert_enter_cntr;
 
 always @(*) begin
 	case(s_cmd)
@@ -120,16 +139,107 @@ always @(*) begin
 			end
 		default:
 			begin
-				s_tx_en   <= 1'b0;
-				s_tx_data <= 8'b0;
+//				s_tx_en   <= 1'b0;
+//				s_tx_data <= 8'b0;
+//				s_tx_en   <= s_host1_rx_en  ;
+//				s_tx_data <= s_host1_rx_data;
+				if(s_insert_enter) begin
+					s_tx_en   <= 1'b1;
+					s_tx_data <= (s_insert_enter_cntr == 3'h5) ? 8'hD : 8'hA;
+				end else begin
+					s_tx_en   <= s_host2_rx_ascii_en  ;
+					s_tx_data <= s_host2_rx_ascii_data;
+				end
 			end
 	endcase
 end
 
+reg  [31:0] s_raw_dir;
+initial s_raw_dir <= 32'b1;
+
+// --------------------
+// TEST RTL
+// --------------------
+
+always @(negedge rst_n, posedge clk) begin
+	if(~rst_n) begin
+		s_host1_tx_en   <= 1'b0;
+		s_host1_tx_data <= 8'b0;
+	end else if (clk) begin
+//		if (s_cmd == CMD_RAW && s_raw_dir[0]) begin
+//			s_host1_tx_en   <= s_buf_en;
+//			s_host1_tx_data <= s_buf_data;
+		if (1'b1) begin
+			s_host1_tx_en   <= s_rx_en;
+			s_host1_tx_data <= s_rx_data;
+		end else begin
+			s_host1_tx_en   <= 1'b0;
+			s_host1_tx_data <= 8'b0;
+		end
+	end
+end
+
+uart_if #(
+	.SYS_CLK_FREQ         (50000000       ), // parameter SYS_CLK_FREQ = 50000000, // default = 115200baud @ 50MHz
+	.BAUD_RATE            (115200         ), // parameter BAUD_RATE    = 115200,
+	.CNT_BITWIDTH         (9              )  // parameter CNT_BITWIDTH = 9         // ceil(log2(SYS_CLK_FREQ/BAUD_RATE))
+) u_host_uart_if(
+	.rst_ni               (rst_n          ), // input  wire       rst_n,
+	.clk_i                (clk            ), // input  wire       clk,
+
+	.uart_rx_i            (host1_uart_rx  ), // input  wire       uart_rx_i,
+	.uart_cts_o           (               ), // output wire       uart_cts_o,
+
+	.uart_tx_o            (host1_uart_tx  ), // output reg        uart_tx_o,
+	.uart_rts_i           (1'b1           ), // input  wire       uart_rts_i,
+
+	.rx_irq_o             (s_host1_rx_en  ), // output wire       rx_irq_o,   // rx_irq(1clk pulse)
+	.rx_data_o            (s_host1_rx_data), // output wire [7:0] rx_data_o,  // 
+	.rx_wait_i            (1'b0           ), // input  wire [7:0] rx_data_o,  //
+
+	.tx_irq_i             (s_host1_tx_en  ), // input  wire       tx_irq_i,   // tx_irq(1clk pulse)
+	.tx_data_i            (s_host1_tx_data), // input  wire [7:0] tx_data_i,  // 
+	.tx_busy_o            (               )  // output wire       tx_busy_o   // 1:ignore tx_irq
+);
+
+
+ps2_rx_if u_ps2_rx_if (
+	.rst_ni         (rst_n            ), // input  wire       rst_ni,
+	.clk_i          (clk              ), // input  wire       clk_i,
+
+	.ps2_rx_clk_i   (host2_ps2_clk    ), // input  wire       ps2_rx_clk_i,
+	.ps2_rx_data_i  (host2_ps2_data   ), // input  wire       ps2_rx_data_i,
+
+    .rx_en_o        (s_host2_rx_en    ), // output wire       rx_en_o,
+    .rx_data_o      (s_host2_rx_data  ), // output wire [7:0] rx_data_o,
+    .rx_pty_err_o   (s_rx_pty_err     )  // output wire       rx_pty_err_o, // parity error
+);
+
+wire s_trg_400us;
+
+//         freq      base 1 2  3 4 5
+trg_cntr #(50000000,400,0,0,0,0,0) u_trg_cntr(rst_n, clk, 1'b1, s_trg_400us, , , , , );
+
+always @(negedge rst_n, posedge clk)
+begin
+	if(~rst_n)
+		s_insert_enter_cntr <= 3'b0;
+	else if(clk) begin
+		if(s_host2_rx_en)
+			s_insert_enter_cntr <= 3'b0;
+		else if(~&s_insert_enter_cntr && s_trg_400us)
+			s_insert_enter_cntr <= s_insert_enter_cntr + 1'b1;
+	end
+end
+		
+assign s_insert_enter = (s_trg_400us && (s_insert_enter_cntr == 3'h5 || s_insert_enter_cntr == 3'h6)) ? 1'b1 : 1'b0;
+
+hex2ascii #(2) u_host2_hex2ascii (rst_n, clk, s_host2_rx_en, s_host2_rx_data, , s_host2_rx_ascii_en, s_host2_rx_ascii_data);
+
+
 // Debug
 //assign led_debug = s_rx_data;
-assign led_debug = {uart_rx, uart_tx, 1'b1, s_cmd};
+assign led_debug = {s_rx_pty_err, uart_tx, 1'b1, s_cmd};
 assign test_pin  = uart_tx;
-
 
 endmodule

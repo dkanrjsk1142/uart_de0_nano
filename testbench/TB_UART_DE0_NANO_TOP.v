@@ -20,6 +20,7 @@ module TB_UART_DE0_NANO_TOP;
 reg  s_clk_en;
 wire s_clk_50m;
 wire s_clk_115k;
+wire s_clk_16p7;
 wire s_rsth;
 
 initial begin
@@ -32,6 +33,8 @@ tb_clk #(50000000, 50) u_tb_clk_50m  (s_clk_en, s_clk_50m , s_rsth);
 tb_clk #(  115200, 50) u_tb_clk_115k (    1'b1, s_clk_115k,       );
 //tb_clk #(    9600, 50) u_tb_clk_115k (    1'b1, s_clk_115k,       );
 
+
+tb_clk #(   16667, 50) u_tb_clk_16k7 (    1'b1, s_clk_16k7,       );
 
 // --------------------
 // cpu
@@ -46,6 +49,10 @@ tri1 s_uart_tx;
 tri1 s_uart_cts;
 tri1 s_uart_rts;
 
+reg s_ps2_clk;
+reg s_ps2_data;
+
+
 UART_DE0_NANO U_UART_DE0_NANO(
 	.rst_n     (~s_rsth             ), //input  wire rst_n,
 	.clk       (s_clk_50m           ), //input  wire clk,
@@ -56,10 +63,54 @@ UART_DE0_NANO U_UART_DE0_NANO(
 	.uart_cts  (s_uart_cts          ), //output wire uart_cts
 	.uart_rts  (s_uart_rts          ), //input  wire uart_rts
 
+	// test RTL
+	.host1_uart_rx (s_host_uart      ), // input  wire       host1_uart_rx,
+	.host1_uart_tx (s_host_uart      ), // output wire       host1_uart_tx,
+	.host2_ps2_clk (s_ps2_clk        ), // input  wire       host2_ps2_clk,
+	.host2_ps2_data(s_ps2_data       ), // input  wire       host2_ps2_data,
+
 	// debug
 	.led_debug (                    ), //output wire [7:0] led_debug
 	.test_pin  (                    )  //output wire test_pin
 );
+
+reg [7:0] s_ps2_cntr;
+always @(posedge s_rsth, posedge s_clk_16k7)
+begin
+	if(s_rsth)
+		s_ps2_cntr <= 8'b0;
+	else if(s_clk_16k7) begin
+		s_ps2_cntr <= s_ps2_cntr + 1'b1;
+	end
+end
+
+always @(s_clk_16k7)
+begin
+	if(s_ps2_cntr > 8'h0 && s_ps2_cntr < 8'hD)
+		s_ps2_clk <= s_clk_16k7;
+	else
+		s_ps2_clk <= 1'b1;
+end
+	
+
+always @(posedge s_clk_16k7)
+begin
+	case(s_ps2_cntr)
+		5'h00 : s_ps2_data <= 1'b0;
+		5'h01 : s_ps2_data <= 1'b0; // start
+		5'h02 : s_ps2_data <= 1'b1;
+		5'h03 : s_ps2_data <= 1'b0;
+		5'h04 : s_ps2_data <= 1'b1;
+		5'h05 : s_ps2_data <= 1'b0;
+		5'h06 : s_ps2_data <= 1'b1;
+		5'h07 : s_ps2_data <= 1'b0;
+		5'h08 : s_ps2_data <= 1'b0;
+		5'h09 : s_ps2_data <= 1'b0;
+		5'h0A : s_ps2_data <= 1'b0; // pty
+		5'h0B : s_ps2_data <= 1'b1; // STOP
+		default : s_ps2_data <= 1'b1;
+	endcase
+end
 
 // --------------------
 // Bench
